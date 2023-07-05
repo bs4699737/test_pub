@@ -100,7 +100,7 @@ ModuleManager::ModuleManager()
     //locate BUILTIN_CONFIG.json
     std::vector<std::string> roots;
     roots.push_back(s_bmf_sys_root);
-    auto lib_path = fs::path(SharedLibrary::this_line_location()).parent_path();
+    auto lib_path = fs::path(SharedLibrary::this_line_location()).lexically_normal().parent_path();
     roots.push_back(lib_path);
     roots.push_back(lib_path.parent_path());
     roots.push_back(fs::current_path());
@@ -114,7 +114,7 @@ ModuleManager::ModuleManager()
         }
     }
 
-    //
+    //XXX: self->builtin_root is ""
     fn = fs::path(self->builtin_root) / fn;
     if(!fs::exists(fn)){
         return;
@@ -370,7 +370,7 @@ bool ModuleManager::initialize_loader(const std::string &module_type)
     }
     if(module_type == "python"){
         auto lib_name = std::string("libbmf_py_loader") + SharedLibrary::default_extension();
-        auto loader_path = fs::path(SharedLibrary::this_line_location()).parent_path() / lib_name;
+        auto loader_path = fs::path(SharedLibrary::this_line_location()).lexically_normal().parent_path() / lib_name;
         auto lib = std::make_shared<SharedLibrary>(loader_path, 
                             SharedLibrary::LAZY | SharedLibrary::GLOBAL);
 
@@ -393,7 +393,7 @@ bool ModuleManager::initialize_loader(const std::string &module_type)
     }
     else if(module_type == "go"){
         auto lib_name = std::string("libbmf_go_loader") + SharedLibrary::default_extension();
-        auto loader_path = fs::path(SharedLibrary::this_line_location()).parent_path() / lib_name;
+        auto loader_path = fs::path(SharedLibrary::this_line_location()).lexically_normal().parent_path() / lib_name;
         auto lib = std::make_shared<SharedLibrary>(loader_path, 
                             SharedLibrary::LAZY | SharedLibrary::GLOBAL);
 
