@@ -2,19 +2,33 @@
 
 set -exuo pipefail
 
+DEVICE=cpu
 OS=$(uname)
 if [ ${OS} == "Linux" ]
 then
     . /etc/os-release
+elif [ ${OS} == "Darwin" ]
+then
+    ARCH=$(uname -m)
 fi
 
-if [ $# -eq 0 ]
-then
-    echo "Which version of ffmpeg do you want to compile, GPU or CPU?"
-    exit 1
-fi
-DEVICE=$(echo $1 | tr 'A-Z' 'a-z')
-shift 1
+
+while [[ $# -gt 0 ]]
+do
+    arg=$1
+    case ${arg} in
+        --device=*)
+            DEVICE=$(echo ${arg#--device=} | tr 'A-Z' 'a-z')
+            ;;
+        --arch=*)
+            ARCH=${arg#--arch=}
+            ;;
+        *)
+            break
+            ;;
+    esac
+    shift
+done
 
 
 function install_dependencies_linux() {
@@ -29,7 +43,7 @@ function install_dependencies_linux() {
 }
 
 function install_dependencies_macos() {
-    brew install automake git libtool wget 
+    brew install automake git libtool wget
 }
 
 function build_nasm_unix() {
@@ -112,27 +126,57 @@ function build_vpx_unix() {
 
 function build_ffmpeg_unix() {
     cd $1
-    if [ ! -e ffmpeg-4.4 ]
+    if [ ! -e ffmpeg-4.4.tar.gz2 ]
     then
         curl -O -L https://ffmpeg.org/releases/ffmpeg-4.4.tar.bz2
-        tar xjvf ffmpeg-4.4.tar.bz2
     fi
+    if [ -d ffmpeg-4.4 ]
+    then
+        rm -rf ffmpeg-4.4
+    fi
+    tar xjvf ffmpeg-4.4.tar.bz2
     cd ffmpeg-4.4
 
     if [ ${OS} == "Linux" ] && [ ${DEVICE} == "gpu" ] && [ $(uname -m) == "x86_64" ]
     then
-	sed -i 's/gencode arch=compute_30,code=sm_30/gencode arch=compute_52,code=sm_52/g' configure
+        sed -i 's/gencode arch=compute_30,code=sm_30/gencode arch=compute_52,code=sm_52/g' configure
     fi
 
     trap 'cat ffbuild/config.log' ERR
-    ./configure \
-      --pkg-config-flags="--static" \
-      --enable-shared \
-      --disable-static \
-      --disable-autodetect \
-      --extra-libs=-lpthread \
-      --extra-libs=-lm \
-      ${@:3}
+    case $3 in
+        x86_64)
+            ./configure \
+              --pkg-config-flags="--static" \
+              --enable-shared \
+              --disable-static \
+              --disable-autodetect \
+              --extra-libs=-lpthread \
+              --extra-libs=-lm \
+              --cc='clang -arch x86_64' \
+              ${@:4}
+            ;;
+        arm64)
+            ./configure \
+              --pkg-config-flags="--static" \
+              --enable-shared \
+              --disable-static \
+              --disable-autodetect \
+              --extra-libs=-lpthread \
+              --extra-libs=-lm \
+              --cc='clang -arch arm64' \
+              ${@:4}
+            ;;
+        *)
+            ./configure \
+              --pkg-config-flags="--static" \
+              --enable-shared \
+              --disable-static \
+              --disable-autodetect \
+              --extra-libs=-lpthread \
+              --extra-libs=-lm \
+              ${@:4}
+            ;;
+    esac
     trap - ERR
 
     make -j $2
@@ -189,6 +233,23 @@ function check_lib() {
     return 1
 }
 
+function change_ffmpeg_deps_macos() {
+    otool -L $1 | awk '{if(NF>1){print($1);}}' | grep ffmpeg_x86_64 | while read old_dep
+    do
+        new_dep=$(echo ${old_dep} | sed 's/ffmpeg_x86_64/ffmpeg_'"$3"'/g')
+        install_name_tool -change ${old_dep} ${new_dep} $1
+    done
+
+    if [ $2 == "lib" ]
+    then
+        otool -D $1 | grep -v ":$" | grep ffmpeg_x86_64 | while read old_id
+        do
+            new_id=$(echo ${old_id} | sed 's/ffmpeg_x86_64/ffmpeg_'"$3"'/g')
+            install_name_tool -id ${new_id} $1
+        done
+    fi
+}
+
 if [ ${OS} == "Linux" ] || [ ${OS} == "Darwin" ]
 then
     disable_asm="--disable-x86asm"
@@ -202,38 +263,83 @@ then
         if [ ${DEVICE} == "gpu" ] && [ $(uname -m) == "x86_64" ]
         then
             install_cuda_linux $(pwd)/ffmpeg_source
-	    (build_ffnvcodec_linux $(pwd)/ffmpeg_source)
-	    ffmpeg_opts="${ffmpeg_opts} --enable-cuda-nvcc --enable-libnpp --extra-cflags=-I/usr/local/cuda/include --extra-ldflags=-L/usr/local/cuda/lib64"
+            (build_ffnvcodec_linux $(pwd)/ffmpeg_source)
+            ffmpeg_opts="${ffmpeg_opts} --enable-cuda-nvcc --enable-libnpp --extra-cflags=-I/usr/local/cuda/include --extra-ldflags=-L/usr/local/cuda/lib64"
         fi
-	cores=$(nproc)
+        cores=$(nproc)
     else
         (install_dependencies_macos)
-	cores=$(sysctl -n hw.logicalcpu)
+        cores=$(sysctl -n hw.logicalcpu)
     fi
 
     for arg in $@
     do
         (build_${arg}_unix $(pwd)/ffmpeg_source ${cores})
 
-	if [ ${arg} == "nasm" ] || [ ${arg} == "yasm" ]
-	then
-            disable_asm=""
-	fi
+    if [ ${arg} == "nasm" ] || [ ${arg} == "yasm" ]
+    then
+        disable_asm=""
+    fi
 
-        set +e
-	(check_lib $(pwd)/ffmpeg_source ${arg})
-	if [ $? -eq 0 ]
-	then
-            ffmpeg_opts="${ffmpeg_opts} --enable-lib${arg}"
-	fi
-	set -e
+    set +e
+    (check_lib $(pwd)/ffmpeg_source ${arg})
+    if [ $? -eq 0 ]
+    then
+        ffmpeg_opts="${ffmpeg_opts} --enable-lib${arg}"
+    fi
+    set -e
     done
-    
+
     ffmpeg_opts="${ffmpeg_opts} ${disable_asm}"
 
-    printf "ffmpeg_opts: %s\n" ${ffmpeg_opts}
-    build_ffmpeg_unix $(pwd)/ffmpeg_source ${cores} ${ffmpeg_opts}
+
+    if [ ${OS} == "Linux" ]
+    then
+        printf "ffmpeg_opts: %s\n" ${ffmpeg_opts}
+        (build_ffmpeg_unix $(pwd)/ffmpeg_source ${cores} "" ${ffmpeg_opts})
+    else
+        if [[ ${ARCH} = universal* ]]
+        then
+            for arch in "x86_64" "arm64"
+            do
+                ffmpeg_opts_mac="${ffmpeg_opts} --prefix=$(pwd)/ffmpeg_${arch} --enable-cross-compile --arch=${arch}"
+                (build_ffmpeg_unix $(pwd)/ffmpeg_source ${cores} ${arch} ${ffmpeg_opts_mac})
+            done
+
+            mkdir -p ffmpeg_${ARCH}/{bin,lib}
+            cp -r ffmpeg_x86_64/{include,share} ffmpeg_${ARCH}
+            cp -r ffmpeg_x86_64/lib/pkgconfig ffmpeg_${ARCH}/lib/pkgconfig
+            for bin in `find ffmpeg_x86_64/bin -maxdepth 1 -not -type d`
+            do
+                lipo -create ffmpeg_x86_64/bin/$(basename ${bin}) ffmpeg_arm64/bin/$(basename ${bin}) -output ffmpeg_${ARCH}/bin/$(basename ${bin})
+            done
+            for lib in `find ffmpeg_x86_64/lib -maxdepth 1 -not -type d`
+            do
+                lipo -create ffmpeg_x86_64/lib/$(basename ${lib}) ffmpeg_arm64/lib/$(basename ${lib}) -output ffmpeg_${ARCH}/lib/$(basename ${lib})
+            done
+
+            for bin in `find ffmpeg_${ARCH}/bin -maxdepth 1 -not -type d`
+            do
+                change_ffmpeg_deps_macos ${bin} "bin" ${ARCH}
+            done
+            for lib in `find ffmpeg_${ARCH}/lib -maxdepth 1 -not -type d`
+            do
+                change_ffmpeg_deps_macos ${lib} "lib" ${ARCH}
+            done
+            for pc_file in `find ffmpeg_${ARCH}/lib/pkgconfig -maxdepth 1 -not -type d`
+            do
+                sed -i '' 's/ffmpeg_x86_64/ffmpeg_'"${ARCH}"'/g' ${pc_file}
+            done
+        else
+            ffmpeg_opts="${ffmpeg_opts} --prefix=$(pwd)/ffmpeg_${ARCH} --enable-cross-compile --arch=${ARCH}"
+            (build_ffmpeg_unix $(pwd)/ffmpeg_source ${cores} ${ARCH} ${ffmpeg_opts})
+        fi
+    fi
 else
     printf "the system %s is not supported!" ${OS}
     exit 1
 fi
+    if [ -d ffmpeg-4.4 ]
+    then
+        rm -rf ffmpeg-4.4
+    fi

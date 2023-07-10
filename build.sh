@@ -33,6 +33,7 @@ then
     BREAKPAD_ENABLE=ON
 fi
 CUDA_ENABLE=ON
+FFMPEG_ENABLE=ON
 
 # Handle options
 if [ $# -gt 0 ]
@@ -66,9 +67,14 @@ then
     if [ "$1" = "disable" ]
     then
         shift
-	if [ "$1" = "cuda" ]
-	then
+        if [ "$1" = "cuda" ]
+        then
             CUDA_ENABLE=OFF
+        fi
+
+        if [ "$1" = "ffmpeg" ]
+        then
+            FFMPEG_ENABLE=OFF
         fi
     fi
 fi
@@ -136,9 +142,10 @@ then
         cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
             -DBMF_PYENV="${python_versions[$i]}" \
             -DBMF_BUILD_VERSION=${BMF_BUILD_VERSION} \
-	    -DBMF_ENABLE_BREAKPAD=${BREAKPAD_ENABLE} \
-	    -DBMF_ENABLE_TEST=OFF \
-	    -DBMF_ENABLE_CUDA=OFF \
+            -DBMF_ENABLE_BREAKPAD=${BREAKPAD_ENABLE} \
+            -DBMF_ENABLE_TEST=OFF \
+            -DBMF_ENABLE_CUDA=OFF \
+            -DBMF_ENABLE_FFMPEG=${FFMPEG_ENABLE} \
             -DBMF_BUILD_COMMIT=${BMF_BUILD_COMMIT} ..
         make -j$(nproc)
 
@@ -226,7 +233,8 @@ else
         -DCOVERAGE=${COVERAGE_OPTION} \
         -DBMF_BUILD_VERSION=${BMF_BUILD_VERSION} \
         -DBMF_ENABLE_BREAKPAD=${BREAKPAD_ENABLE} \
-	-DBMF_ENABLE_CUDA=${CUDA_ENABLE} \
+        -DBMF_ENABLE_CUDA=${CUDA_ENABLE} \
+        -DBMF_ENABLE_FFMPEG=${FFMPEG_ENABLE} \
         -DBMF_BUILD_COMMIT=${BMF_BUILD_COMMIT} ..
     make -j$(nproc)
 

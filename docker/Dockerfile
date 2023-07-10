@@ -1,7 +1,9 @@
 FROM ubuntu:20.04
 
 ARG DEVICE=gpu
+ARG GITHUB_ACTIONS
 
+ENV GITHUB_ACTIONS=${GITHUB_ACTIONS}
 ENV DEBIAN_FRONTEND noninteractive
 
 # required
@@ -17,10 +19,11 @@ COPY ./ /root/bmf/
 WORKDIR /root/bmf/
 
 # ffmpeg installed via apt has no development libraries, so we build it from source
-RUN scripts/build_ffmpeg.sh $DEVICE nasm yasm x264 x265 fdk-aac opus
-RUN scripts/build_breakpad.sh
+RUN scripts/build_ffmpeg.sh --device=$DEVICE nasm yasm x264 x265 fdk-aac opus \
+    && scripts/build_breakpad.sh \
+    && rm -rf ffmpeg_source
 
-RUN ./build.sh disable cuda
+RUN ./build.sh disable cuda && rm -rf .git && ./build.sh clean
 
 ENV LD_LIBRARY_PATH=/root/bmf/output/bmf/lib
 ENV PATH=${PATH}:/root/bmf/output/bmf/bin

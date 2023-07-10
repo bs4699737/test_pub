@@ -1,6 +1,7 @@
 import os
 import re
 import glob
+import site
 import ctypes
 import platform
 import subprocess
@@ -24,7 +25,6 @@ PLAT_TO_CMAKE = {
 
 package_name="BabitMF"
 package_version="0.0.5"
-#build_temp=Path("build") / "temp"
 
 if "DEVICE" in os.environ and os.environ["DEVICE"] == "gpu":
     package_name="BabitMF_GPU"
@@ -67,13 +67,15 @@ class CMakeBuild(build_ext):
             f"-DBMF_ENABLE_TEST=OFF",
             f"-DPYTHON_INCLUDE_DIR={sysconfig.get_path('include')}",
             f"-DPYTHON_LIBRARY={sysconfig.get_config_var('LIBDIR')}",
-            f"-DBMF_PYENV={'{}.{}'.format(sys.version_info.major, sys.version_info.minor)}",
+            f"-DBMF_PYENV={'{}.{}.{}'.format(sys.version_info.major, sys.version_info.minor, sys.version_info.micro)}", #There is a situation on macOS, that is, cibuildwheel uses python3.8.10 to call the setup.py, but cmake finds python3.8.9 installed under the xcode path, resulting in the python path in the final executable file starting with @rpath, which is There will be problems at runtime. So we use the full python version number, which is major.minor.patch
             f"-DBMF_BUILD_VERSION={package_version}",
             f"-DBMF_BUILD_COMMIT={short_sha}",
         ]
 
         if debug:
             cmake_args += ["-DCMAKE_VERBOSE_MAKEFILE=ON"]
+            if debug == 2:
+                cmake_args += ["--trace-expand"]
 
         build_args = []
         # Adding CMake arguments set as environment variable
@@ -139,7 +141,6 @@ class CMakeBuild(build_ext):
                 build_args += [f"-j{self.parallel}"]
 
         build_temp = Path(self.build_temp) / ext.name
-        #self.build_temp = build_temp
         if not build_temp.exists():
             build_temp.mkdir(parents=True)
 
@@ -152,37 +153,20 @@ class CMakeBuild(build_ext):
             ["cmake", "--build", ".", *build_args], cwd=build_temp, check=True
         )
 
-        # We have two output extensions (_bmf and _hmp), two module loaders (py_module_loader and go_module_loader),
-        # builtin_modules, and their respective dependencies. _bmf and _hmp need to be installed in the bmf/lib directory.
-        # The bmf_module_sdk, engine and hmp libraries that these two extensions depend on will be automatically
-        # packaged into the BabitMF.libs directory by `auditwheel repair`, so there is no need to manually copy them.
-        # Hower, since py_loader_module and go_loader_module are dynamically loaded through dlopen, they will be ignored
-        # by `auditwheel repair`, so they need to be manually copied to the BabitMF.libs directory.
-
         # This CMake building support only single output, and scikit-build using pyproject.toml which is
         # a static config file. Obviously, setup.py is more convenient than pyproject.toml, so we manually copy
         # _bmf, _hmp, py_module_loader, go_module_loader and builtin_moduls before repair, instead of
         # the entire lib directory. the build directory is temporary, so we need to copy it here, instead of package_data.
-        #src_dir = os.path.join(build_temp, "output", "bmf", "lib")
-        #extensions_dst_dir = os.path.join(extdir, "bmf", "lib")
-        #depends_dst_dir = os.path.join(extdir, package_name + ".libs") # command `auditwheel repair` store libraries into ${package_name}.libs
-        #if not os.path.exists(extensions_dst_dir):
-        #    os.mkdir(extensions_dst_dir)
-        #if not os.path.exists(depends_dst_dir):
-        #    os.mkdir(depends_dst_dir)
-
-        #for lib in glob.glob(f"{src_dir}{os.sep}_*"):
-        #    shutil.copy(lib, extensions_dst_dir)
-        #for file_glob in ["go_loader", "py_loader", "builtin_modules"]:
-        #    for lib in glob.glob(f"{src_dir}{os.sep}*{file_glob}.so"): #XXX: adapt for macos/windows
-        #        shutil.copy(lib, depends_dst_dir)
-
-        for file in ["BUILTIN_CONFIG.json"]:
-           shutil.copyfile(os.path.join(build_temp, "output", "bmf", file), os.path.join(extdir, "bmf", file))
         shutil.copytree(os.path.join(build_temp, "output", "bmf", "bin"), os.path.join(extdir, "bmf", "bin"))
         shutil.copytree(os.path.join(build_temp, "output", "bmf", "lib"), os.path.join(extdir, "bmf", "lib"))
         shutil.copytree(os.path.join(build_temp, "output", "bmf", "include"), os.path.join(extdir, "bmf", "include"))
+        for file in ["BUILTIN_CONFIG.json"]:
+           shutil.copyfile(os.path.join(build_temp, "output", "bmf", file), os.path.join(extdir, "bmf", file))
 
+        if sys.platform.startswith("darwin"):
+            subprocess.run(
+                ["./scripts/redirect_macos_dep.sh", extdir], check=True
+            )
 
 
 # The information here can also be placed in setup.cfg - better separation of
@@ -219,7 +203,6 @@ setup(
            'trace_format_log = bmf.cmd.python_wrapper.wrapper:trace_format_log',
            'module_manager = bmf.cmd.python_wrapper.wrapper:module_manager',
            "bmf_env = bmf.cmd.python_wrapper.wrapper:bmf_env",
-           #"bmf_env_restore = bmf.cmd.python_wrapper.wrapper:bmf_env_restore",
         ],
     }
 )

@@ -37,9 +37,12 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Build and push
+      #if: startsWith(github.ref, 'refs/tags/')
       uses: docker/build-push-action@v4
       with:
         push: true
         context: .
         file: ./docker/Dockerfile
         tags: ${{ steps.meta.outputs.tags }}
+        build-args: |
+          "GITHUB_ACTIONS=${GITHUB_ACTIONS}"
