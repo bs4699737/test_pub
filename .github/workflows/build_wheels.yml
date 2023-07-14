@@ -59,13 +59,6 @@ jobs:
         with open(output_file, "a", encoding="utf-8") as output_stream:
             output_stream.write(f"count={num_cpus}\n")
 
-        # using gcc-8 for x86_64 and gpu stage
-        if "${{ matrix.device }}" == "gpu" and "${{ matrix.linux_arch }}" == "x86_64":
-            with open(output_file, "a", encoding="utf-8") as output_stream:
-                output_stream.write(f"cmake_args=\"-DCMAKE_C_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/gcc -DCMAKE_CXX_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/g++\"\n")
-        else:
-            with open(output_file, "a", encoding="utf-8") as output_stream:
-                output_stream.write(f"cmake_args=\"-DBMF_ENABLE_CUDA=OFF\"\n")
       shell: python
 
     - name: Build wheels
@@ -92,9 +85,7 @@ jobs:
         CIBW_MANYLINUX_AARCH64_IMAGE: smartbrave/manylinux2014_aarch64_shared_python:latest
         CIBW_MANYLINUX_PPC64LE_IMAGE: smartbrave/manylinux2014_ppc64le_shared_python:latest
         CIBW_MANYLINUX_S390X_IMAGE: smartbrave/manylinux2014_s390x_shared_python:latest
-        # cuda11 is used by FFmpeg and BabitMF, which is not support gcc-9+, so we remove the default gcc installed by manylinux and reinstall gcc/g++ 8 for x86_64 and gpu stage. On the other hand, devtoolset-8-xxx is not exist on i686 platform.
         CIBW_BEFORE_ALL_LINUX: >
-          if [ ${{ matrix.device }} == "gpu" ] && [ ${{ matrix.linux_arch }} == "x86_64" ]; then mv /opt/rh/devtoolset-10{,.bak} && yum -y install devtoolset-8-{gcc,gcc-c++} && export PATH=/opt/rh/devtoolset-8/root/usr/bin:${PATH}; fi &&
           (./scripts/build_ffmpeg.sh --device=${{ matrix.device }})
         CIBW_REPAIR_WHEEL_COMMAND_LINUX:
           auditwheel show {wheel} &&
