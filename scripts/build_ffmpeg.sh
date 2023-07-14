@@ -183,24 +183,49 @@ function build_ffmpeg_unix() {
     make install
 }
 
+# cuda11.8 is now supported
 function install_cuda_linux() {
     cd $1
-    if [[ ${NAME} =~ "CentOS" ]]
+    if [[ ${NAME} =~ "CentOS" ]] && [[ ${VERSION_ID} == "7" ]]
     then
-        wget -q http://developer.download.nvidia.com/compute/cuda/11.0.2/local_installers/cuda-repo-rhel7-11-0-local-11.0.2_450.51.05-1.x86_64.rpm
-        rpm -i cuda-repo-rhel7-11-0-local-11.0.2_450.51.05-1.x86_64.rpm
-        rm -rf cuda-repo-rhel7-11-0-local-11.0.2_450.51.05-1.x86_64.rpm
+        wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda-repo-rhel7-11-8-local-11.8.0_520.61.05-1.x86_64.rpm
+        rpm -i cuda-repo-rhel7-11-8-local-11.8.0_520.61.05-1.x86_64.rpm
         yum clean all
-        yum -y install nvidia-driver-latest-dkms cuda
-        yum -y install cuda-drivers
-    elif [[ ${NAME} == "Ubuntu" ]] || [[ ${NAME} =~ "Debian" ]]
+        yum -y install nvidia-driver-latest-dkms
+        yum -y install cuda
+    elif [[ ${NAME} == "Ubuntu" ]] && [[ ${VERSION_ID} == "18.04" ]]
+    then
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-ubuntu1804.pin
+        mv cuda-ubuntu1804.pin /etc/apt/preferences.d/cuda-repository-pin-600
+        https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda-repo-ubuntu1804-11-8-local_11.8.0-520.61.05-1_amd64.deb
+        dpkg -i cuda-repo-ubuntu1804-11-8-local_11.8.0-520.61.05-1_amd64.deb
+        cp /var/cuda-repo-ubuntu1804-11-8-local/cuda-*-keyring.gpg /usr/share/keyrings/
+        apt-get update
+        apt-get -y install cuda
+    elif [[ ${NAME} == "Ubuntu" ]] && [[ ${VERSION_ID} == "20.04" ]]
     then
         wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
-mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
-        wget http://developer.download.nvidia.com/compute/cuda/11.0.2/local_installers/cuda-repo-ubuntu2004-11-0-local_11.0.2-450.51.05-1_amd64.deb
-        dpkg -i cuda-repo-ubuntu2004-11-0-local_11.0.2-450.51.05-1_amd64.deb
-        rm -rf cuda-repo-ubuntu2004-11-0-local_11.0.2-450.51.05-1_amd64.deb
-        apt-key add /var/cuda-repo-ubuntu2004-11-0-local/7fa2af80.pub
+        mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
+        https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
+        dpkg -i cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
+        cp /var/cuda-repo-ubuntu2004-11-8-local/cuda-*-keyring.gpg /usr/share/keyrings/
+        apt-get update
+        apt-get -y install cuda
+    elif [[ ${NAME} == "Ubuntu" ]] && [[ ${VERSION_ID} == "22.04" ]]
+    then
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-ubuntu2204.pin
+        mv cuda-ubuntu2204.pin /etc/apt/preferences.d/cuda-repository-pin-600
+        https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda-repo-ubuntu2204-11-8-local_11.8.0-520.61.05-1_amd64.deb
+        dpkg -i cuda-repo-ubuntu2204-11-8-local_11.8.0-520.61.05-1_amd64.deb
+        cp /var/cuda-repo-ubuntu2204-11-8-local/cuda-*-keyring.gpg /usr/share/keyrings/
+        apt-get update
+        apt-get -y install cuda
+    elif [[ ${NAME} =~ "Debian" ]] && [[ ${VERSION_ID} == "11" ]]
+    then
+        wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda-repo-debian11-11-8-local_11.8.0-520.61.05-1_amd64.deb
+        dpkg -i cuda-repo-debian11-11-8-local_11.8.0-520.61.05-1_amd64.deb
+        cp /var/cuda-repo-debian11-11-8-local/cuda-*-keyring.gpg /usr/share/keyrings/
+        add-apt-repository contrib
         apt-get update
         apt-get -y install cuda
     fi
@@ -212,6 +237,7 @@ function build_ffnvcodec_linux() {
     cd $1
     git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
     cd nv-codec-headers
+    git checkout n11.1.5.2
     make install
 }
 
@@ -255,7 +281,7 @@ then
     disable_asm="--disable-x86asm"
     ffmpeg_opts="--enable-gpl --enable-nonfree"
     mkdir -p ffmpeg_source
-    trap 'rm -rf ffmpeg_source' EXIT
+    trap "cd $(pwd) && rm -rf ffmpeg_source" EXIT
 
     if [ ${OS} == "Linux" ]
     then
@@ -276,18 +302,18 @@ then
     do
         (build_${arg}_unix $(pwd)/ffmpeg_source ${cores})
 
-    if [ ${arg} == "nasm" ] || [ ${arg} == "yasm" ]
-    then
-        disable_asm=""
-    fi
+        if [ ${arg} == "nasm" ] || [ ${arg} == "yasm" ]
+        then
+            disable_asm=""
+        fi
 
-    set +e
-    (check_lib $(pwd)/ffmpeg_source ${arg})
-    if [ $? -eq 0 ]
-    then
-        ffmpeg_opts="${ffmpeg_opts} --enable-lib${arg}"
-    fi
-    set -e
+        set +e
+        (check_lib $(pwd)/ffmpeg_source ${arg})
+        if [ $? -eq 0 ]
+        then
+            ffmpeg_opts="${ffmpeg_opts} --enable-lib${arg}"
+        fi
+        set -e
     done
 
     ffmpeg_opts="${ffmpeg_opts} ${disable_asm}"
