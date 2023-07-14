@@ -365,7 +365,3 @@ else
     printf "the system %s is not supported!" ${OS}
     exit 1
 fi
-    if [ -d ffmpeg-4.4 ]
-    then
-        rm -rf ffmpeg-4.4
-    fi
