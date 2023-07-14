@@ -36,6 +36,8 @@ jobs:
     steps:
     - name: Check out source code
       uses: actions/checkout@v3
+      with:
+        submodules: 'recursive'
 
     - name: Get python path
       run: |
@@ -92,8 +94,6 @@ jobs:
         CIBW_MANYLINUX_S390X_IMAGE: smartbrave/manylinux2014_s390x_shared_python:latest
         # cuda11 is used by FFmpeg and BabitMF, which is not support gcc-9+, so we remove the default gcc installed by manylinux and reinstall gcc/g++ 8 for x86_64 and gpu stage. On the other hand, devtoolset-8-xxx is not exist on i686 platform.
         CIBW_BEFORE_ALL_LINUX: >
-          if [ ! -d "3rd_party/json" ]; then (cd 3rd_party && tar xzvf 3rd_party.tar.gz && rm -rf ffmpeg_bin) fi &&
-          if [ ! -d "bmf/hml/third_party/pybind11" ]; then (cd bmf/hml/third_party && tar xzvf third_party.tar.gz) fi &&
           if [ ${{ matrix.device }} == "gpu" ] && [ ${{ matrix.linux_arch }} == "x86_64" ]; then mv /opt/rh/devtoolset-10{,.bak} && yum -y install devtoolset-8-{gcc,gcc-c++} && export PATH=/opt/rh/devtoolset-8/root/usr/bin:${PATH}; fi &&
           (./scripts/build_ffmpeg.sh --device=${{ matrix.device }})
         CIBW_REPAIR_WHEEL_COMMAND_LINUX:
@@ -134,6 +134,8 @@ jobs:
     steps:
     - name: Check out source code
       uses: actions/checkout@v3
+      with:
+        submodules: 'recursive'
 
     - name: Build wheels
       uses: pypa/cibuildwheel@v2.13.1
@@ -145,8 +147,6 @@ jobs:
         CIBW_BUILD_VERBOSITY: 1
         CIBW_ARCHS_MACOS: ${{ matrix.macos_arch }}
         CIBW_BEFORE_ALL_MACOS: >
-          if [ ! -d "3rd_party/json" ]; then (cd 3rd_party && tar xzvf 3rd_party.tar.gz && rm -rf ffmpeg_bin) fi &&
-          if [ ! -d "bmf/hml/third_party/pybind11" ]; then (cd bmf/hml/third_party && tar xzvf third_party.tar.gz) fi &&
           sed -i '' '/sigma_gn /s/^/\/\//g' bmf/hml/third_party/benchmark/src/complexity.cc &&
           brew list python@3.$(echo ${{ matrix.py_ver_prefix }} | cut -c 4-); if [ $? -eq 0 ]; then brew uninstall --ignore-dependencies python@3.$(echo ${{ matrix.py_ver_prefix }} | cut -c 4-); fi
         CIBW_BEFORE_BUILD: >

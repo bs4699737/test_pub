@@ -84,27 +84,20 @@ mkdir -p output
 # Generate BMF version
 source ./version.sh
 
-# Extract FFMPEG from submodule
-if [ ! -d "3rd_party/ffmpeg_bin/linux/" ]
+if [ ! -d "3rd_party/gtest" ]
 then
-    git config --global http.sslVerify false
-    git submodule init "3rd_party/ffmpeg_bin"
-    git submodule update
-fi
-
-if [ ! -d "3rd_party/json" ]
-then
-    echo "Extracting 3rd_party"
-    cd 3rd_party/
-    tar xzvf 3rd_party.tar.gz
+    git submodule update --init --recursive
+    cd 3rd_party/dlpack
+    cmake .
+    make && make install
     cd -
 fi
 
-if [ ! -d "bmf/hml/third_party/pybind11" ]
+if [ ! -d "3rd_party/breakpad" ]
 then
-    echo "Extracting third_party"
-    cd bmf/hml/third_party/
-    tar xzvf third_party.tar.gz
+    echo "Extracting 3rd_party"
+    cd 3rd_party/
+    tar xvf 3rd_party.tar.xz
     cd -
 fi
 

@@ -65,8 +65,10 @@ jobs:
             #  py_ver_prefix: cp39
             #  device: cpu
     steps:
-    - name: Check out code
-      uses: actions/checkout@v2
+    - name: Check out source code
+      uses: actions/checkout@v3
+      with:
+        submodules: 'recursive'
 
     - name: Set up QEMU
       if: runner.os == 'Linux'
@@ -122,8 +124,6 @@ jobs:
         BMF_PYTHON_VERSION: ${{ env.BMF_PYTHON_VERSION }}
         BMF_ARCHITECTURES: ${{ matrix.arch }}
       run: |
-        if [ ! -d "3rd_party/json" ]; then (cd 3rd_party && tar xzvf 3rd_party.tar.gz && rm -rf ffmpeg_bin) fi
-        if [ ! -d "bmf/hml/third_party/pybind11" ]; then (cd bmf/hml/third_party && tar xzvf third_party.tar.gz) fi
         sed -i '' '/sigma_gn /s/^/\/\//g' bmf/hml/third_party/benchmark/src/complexity.cc
         wget https://www.python.org/ftp/python/3.9.13/python-3.9.13-macos11.pkg
         sudo installer -pkg python-3.9.13-macos11.pkg -target /
